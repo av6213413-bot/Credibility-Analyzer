@@ -1,0 +1,43 @@
+/* Analyze Button Styles */
+[data-testid="analyze-button"] {
+  background-color: var(--color-primary) !important;
+  color: #000000 !important;
+}
+
+[data-testid="analyze-button"]:not(:disabled) {
+  background-color: var(--color-primary);
+  color: #000000;
+}
+
+[data-testid="analyze-button"]:not(:disabled):hover {
+  background-color: var(--color-primary-hover);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
+}
+
+[data-testid="analyze-button"]:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+[data-testid="analyze-button"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Clear Button Styles */
+[data-testid="clear-button"]:not(:disabled) {
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+[data-testid="clear-button"]:not(:disabled):hover {
+  background-color: var(--color-surface);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+[data-testid="clear-button"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

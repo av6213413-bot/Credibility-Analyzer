@@ -1,0 +1,24 @@
+# /etc/cron.d/certbot-renewal
+# Cron job for automatic SSL certificate renewal
+#
+# Requirements: 7.2 - SSL certificate automatically renewed before expiration
+#
+# This cron job runs daily at 3:00 AM to check and renew SSL certificates.
+# Let's Encrypt certificates are valid for 90 days, and certbot will only
+# renew certificates that are within 30 days of expiration.
+#
+# Installation:
+#   sudo cp scripts/cron.d/certbot-renewal /etc/cron.d/
+#   sudo chmod 644 /etc/cron.d/certbot-renewal
+#
+# Log file: /var/log/certbot-renewal.log
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Run certificate renewal check daily at 3:00 AM
+# Using random minute offset (0-59) to avoid Let's Encrypt rate limiting
+0 3 * * * root /opt/scripts/renew-ssl.sh >> /var/log/certbot-renewal.log 2>&1
+
+# Alternative: Run twice daily (recommended by Let's Encrypt)
+# 0 0,12 * * * root /opt/scripts/renew-ssl.sh >> /var/log/certbot-renewal.log 2>&1

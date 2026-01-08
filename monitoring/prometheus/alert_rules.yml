@@ -1,0 +1,139 @@
+# Prometheus Alert Rules for Credibility Analyzer
+# Requirements: 1.4, 3.4, 4.4, 6.1, 6.2, 6.3, 6.4, 6.5
+
+groups:
+  - name: performance
+    rules:
+      # HighResponseTime alert (p95 > 5s)
+      # Requirement: 1.4
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API response time"
+          description: "95th percentile response time is {{ $value }}s (threshold: 5s)"
+          
+      # LowScrapingSuccessRate alert (< 90%)
+      # Requirement: 3.4
+      - alert: LowScrapingSuccessRate
+        expr: |
+          (sum(rate(scraping_success_total[5m])) / 
+           (sum(rate(scraping_success_total[5m])) + sum(rate(scraping_failure_total[5m])))) < 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low scraping success rate"
+          description: "Scraping success rate is {{ $value | humanizePercentage }} (threshold: 90%)"
+          
+      # LowCacheHitRate alert (< 60%)
+      # Requirement: 4.4
+      - alert: LowCacheHitRate
+        expr: |
+          (sum(rate(cache_hits_total[5m])) / 
+           (sum(rate(cache_hits_total[5m])) + sum(rate(cache_misses_total[5m])))) < 0.6
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 60%)"
+
+  - name: availability
+    rules:
+      # ServiceDown alert (up == 0 for 30s)
+      # Requirement: 6.1
+      - alert: ServiceDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.instance }} has been down for more than 30 seconds"
+          
+      # HighErrorRate alert (> 5%)
+      # Requirement: 6.2
+      - alert: HighErrorRate
+        expr: |
+          (sum(rate(http_requests_total{status=~"5.."}[5m])) / 
+           sum(rate(http_requests_total[5m]))) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+          
+      # DatabaseConnectionFailure alert
+      # Requirement: 6.3
+      - alert: DatabaseConnectionFailure
+        expr: mongodb_up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "MongoDB connection failure"
+          description: "Cannot connect to MongoDB"
+          
+      # MLServiceUnavailable alert
+      # Requirement: 6.4
+      - alert: MLServiceUnavailable
+        expr: up{job="ml-service"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "ML Service unavailable"
+          description: "ML Service has been down for more than 30 seconds"
+
+  - name: security
+    rules:
+      # RateLimitAbuse alert (> 100 req/min)
+      # Requirement: 6.5
+      - alert: RateLimitAbuse
+        expr: |
+          sum by (client_ip) (rate(http_requests_total[1m])) > 100
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rate limit abuse detected"
+          description: "Client {{ $labels.client_ip }} is making {{ $value }} requests/minute"
+
+  - name: maintenance
+    rules:
+      # BackupVerificationFailure alert
+      # Requirement: 8.3 - WHEN backup verification fails, THE Alert_Manager SHALL trigger a critical alert
+      - alert: BackupVerificationFailure
+        expr: backup_verification_status == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backup verification failed"
+          description: "MongoDB backup verification has failed. Last verification status is {{ $value }}. Immediate investigation required."
+          
+      # BackupTooOld alert - backup age exceeds 48 hours
+      # Requirement: 8.1 - THE Database_Service backups SHALL be created daily
+      - alert: BackupTooOld
+        expr: backup_verification_backup_age_hours > 48
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup is too old"
+          description: "Latest backup is {{ $value }} hours old (threshold: 48 hours)"
+          
+      # SecurityScanCriticalVulnerabilities alert
+      # Requirement: 9.2 - WHEN critical security vulnerabilities are detected, THE Alert_Manager SHALL notify within 1 hour
+      - alert: SecurityScanCriticalVulnerabilities
+        expr: security_vulnerabilities_backend_total{severity="critical"} > 0 or security_vulnerabilities_ml_total{severity="critical"} > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical security vulnerabilities detected"
+          description: "Critical vulnerabilities found in dependencies. Backend: {{ $value }} critical. Immediate patching required."

@@ -1,0 +1,138 @@
+version: '3.8'
+
+# Staging environment configuration
+# Uses separate database/cache instances from production
+# Mirrors production infrastructure for integration testing
+
+services:
+  # Node.js API Server - Staging
+  api:
+    image: ${REGISTRY:-docker.io}/backend:${IMAGE_TAG:-latest}
+    container_name: credibility-api-staging
+    environment:
+      - NODE_ENV=staging
+      - PORT=3000
+      - ML_SERVICE_URL=http://ml-service:5000
+      - CORS_ORIGINS=${STAGING_CORS_ORIGINS:-http://staging.localhost,https://staging.fakechecker.com}
+      - RATE_LIMIT_WINDOW_MS=60000
+      - RATE_LIMIT_MAX=100
+      - MONGODB_URI=${STAGING_MONGODB_URI:-mongodb://mongodb-staging:27017/credibility_staging}
+      - MONGODB_POOL_SIZE=5
+      - MONGODB_READ_PREFERENCE=primary
+      - REDIS_URI=${STAGING_REDIS_URI:-redis://redis-staging:6379}
+      - REDIS_TLS=false
+      - REDIS_CLUSTER_MODE=false
+      - REDIS_CACHE_TTL=1800
+    ports:
+      - "3000:3000"
+    depends_on:
+      ml-service:
+        condition: service_healthy
+      mongodb-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    networks:
+      - staging-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Python ML Service - Staging (CPU)
+  ml-service:
+    image: ${REGISTRY:-docker.io}/ml-service:${IMAGE_TAG:-latest}
+    container_name: credibility-ml-service-staging
+    environment:
+      - FLASK_ENV=staging
+      - PYTHONUNBUFFERED=1
+      - USE_GPU=false
+    expose:
+      - "5000"
+    networks:
+      - staging-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # MongoDB - Staging (separate instance from production)
+  mongodb-staging:
+    image: mongo:6
+    container_name: credibility-mongodb-staging
+    environment:
+      - MONGO_INITDB_DATABASE=credibility_staging
+    volumes:
+      - mongodb_staging_data:/data/db
+    expose:
+      - "27017"
+    networks:
+      - staging-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Redis - Staging (separate instance from production)
+  redis-staging:
+    image: redis:7-alpine
+    container_name: credibility-redis-staging
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_staging_data:/data
+    expose:
+      - "6379"
+    networks:
+      - staging-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # Nginx Reverse Proxy - Staging
+  nginx:
+    image: nginx:alpine
+    container_name: credibility-nginx-staging
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.staging.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - staging-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  staging-network:
+    driver: bridge
+
+volumes:
+  mongodb_staging_data:
+  redis_staging_data:

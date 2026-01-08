@@ -1,0 +1,19 @@
+# Grafana Datasource Provisioning Configuration
+# This file configures Prometheus as the default datasource for Grafana
+# Requirements: 1.3 - THE Metrics_Dashboard SHALL display response time percentiles
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: "2.45.0"

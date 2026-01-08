@@ -1,0 +1,38 @@
+# Prometheus Configuration for Credibility Analyzer
+# Requirements: 1.1, 10.1, 10.2
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+scrape_configs:
+  # API Server metrics
+  - job_name: 'api-server'
+    static_configs:
+      - targets: ['api:3000']
+    metrics_path: /metrics
+    
+  # ML Service metrics
+  - job_name: 'ml-service'
+    static_configs:
+      - targets: ['ml-service:5000']
+    metrics_path: /metrics
+    
+  # MongoDB Exporter metrics
+  - job_name: 'mongodb'
+    static_configs:
+      - targets: ['mongodb-exporter:9216']
+      
+  # Redis Exporter metrics
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']

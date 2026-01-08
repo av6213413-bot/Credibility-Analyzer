@@ -1,0 +1,355 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ${{ secrets.CONTAINER_REGISTRY }}
+
+jobs:
+  # Build and push backend service
+  build-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Docker Hub login (when USE_ECR is not 'true')
+      - name: Login to Docker Hub
+        if: ${{ vars.USE_ECR != 'true' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # AWS ECR login (when USE_ECR is 'true')
+      - name: Configure AWS credentials
+        if: ${{ vars.USE_ECR == 'true' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: ${{ vars.USE_ECR == 'true' }}
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/backend:${{ github.sha }}
+            ${{ env.REGISTRY }}/backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Build and push frontend service
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Docker Hub login (when USE_ECR is not 'true')
+      - name: Login to Docker Hub
+        if: ${{ vars.USE_ECR != 'true' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # AWS ECR login (when USE_ECR is 'true')
+      - name: Configure AWS credentials
+        if: ${{ vars.USE_ECR == 'true' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: ${{ vars.USE_ECR == 'true' }}
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./credibility-analyzer
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/credibility-analyzer:${{ github.sha }}
+            ${{ env.REGISTRY }}/credibility-analyzer:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Build and push ML service (CPU variant)
+  build-ml-cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Docker Hub login (when USE_ECR is not 'true')
+      - name: Login to Docker Hub
+        if: ${{ vars.USE_ECR != 'true' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # AWS ECR login (when USE_ECR is 'true')
+      - name: Configure AWS credentials
+        if: ${{ vars.USE_ECR == 'true' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: ${{ vars.USE_ECR == 'true' }}
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push ML service (CPU)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ml-service
+          file: ./ml-service/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/ml-service:${{ github.sha }}
+            ${{ env.REGISTRY }}/ml-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Build and push ML service (GPU variant)
+  build-ml-gpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Docker Hub login (when USE_ECR is not 'true')
+      - name: Login to Docker Hub
+        if: ${{ vars.USE_ECR != 'true' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # AWS ECR login (when USE_ECR is 'true')
+      - name: Configure AWS credentials
+        if: ${{ vars.USE_ECR == 'true' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: ${{ vars.USE_ECR == 'true' }}
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push ML service (GPU)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ml-service
+          file: ./ml-service/Dockerfile.gpu
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/ml-service-gpu:${{ github.sha }}
+            ${{ env.REGISTRY }}/ml-service-gpu:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Deploy to staging environment
+  deploy-staging:
+    needs: [build-backend, build-frontend, build-ml-cpu, build-ml-gpu]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Staging
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+        run: |
+          # Setup SSH key
+          mkdir -p ~/.ssh
+          echo "$STAGING_SSH_KEY" > ~/.ssh/staging_key
+          chmod 600 ~/.ssh/staging_key
+          ssh-keyscan -H $STAGING_HOST >> ~/.ssh/known_hosts 2>/dev/null
+          
+          # Copy deployment script to staging server
+          scp -i ~/.ssh/staging_key scripts/deploy-staging.sh $STAGING_USER@$STAGING_HOST:/tmp/deploy-staging.sh
+          
+          # Execute deployment
+          ssh -i ~/.ssh/staging_key $STAGING_USER@$STAGING_HOST "chmod +x /tmp/deploy-staging.sh && /tmp/deploy-staging.sh ${{ env.REGISTRY }} ${{ github.sha }}"
+
+      - name: Run Integration Tests
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+        run: |
+          # Wait for services to be ready
+          sleep 30
+          
+          # Health check
+          curl -f $STAGING_URL/health || exit 1
+          
+          # Ready check
+          curl -f $STAGING_URL/ready || exit 1
+          
+          # Basic API test
+          curl -f $STAGING_URL/api/health || exit 1
+
+      - name: Rollback on Failure
+        if: failure()
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+        run: |
+          # Setup SSH key
+          mkdir -p ~/.ssh
+          echo "$STAGING_SSH_KEY" > ~/.ssh/staging_key
+          chmod 600 ~/.ssh/staging_key
+          ssh-keyscan -H $STAGING_HOST >> ~/.ssh/known_hosts 2>/dev/null
+          
+          # Rollback to previous version
+          ssh -i ~/.ssh/staging_key $STAGING_USER@$STAGING_HOST "cd /opt/credibility-analyzer && docker-compose -f docker-compose.staging.yml down && docker-compose -f docker-compose.staging.yml up -d --scale api=0"
+
+  # Deploy to production environment (requires manual approval)
+  # Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6
+  deploy-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Production (Rolling Update)
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          # Setup SSH key
+          mkdir -p ~/.ssh
+          echo "$PROD_SSH_KEY" > ~/.ssh/prod_key
+          chmod 600 ~/.ssh/prod_key
+          ssh-keyscan -H $PROD_HOST >> ~/.ssh/known_hosts 2>/dev/null
+          
+          # Copy deployment script to production server
+          scp -i ~/.ssh/prod_key scripts/deploy-production.sh $PROD_USER@$PROD_HOST:/tmp/deploy-production.sh
+          
+          # Execute rolling deployment
+          ssh -i ~/.ssh/prod_key $PROD_USER@$PROD_HOST "chmod +x /tmp/deploy-production.sh && /tmp/deploy-production.sh ${{ env.REGISTRY }} ${{ github.sha }}"
+
+      - name: Run Smoke Tests
+        env:
+          PROD_URL: ${{ secrets.PROD_URL }}
+        run: |
+          # Wait for services to stabilize
+          sleep 30
+          
+          # Health check
+          curl -f $PROD_URL/health || exit 1
+          
+          # Ready check
+          curl -f $PROD_URL/ready || exit 1
+          
+          # API health check
+          curl -f $PROD_URL/api/health || exit 1
+          
+          # Basic functionality smoke test
+          response=$(curl -s -o /dev/null -w "%{http_code}" $PROD_URL/)
+          if [ "$response" != "200" ]; then
+            echo "Frontend smoke test failed with status: $response"
+            exit 1
+          fi
+
+      - name: Rollback on Failure
+        if: failure()
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          # Setup SSH key
+          mkdir -p ~/.ssh
+          echo "$PROD_SSH_KEY" > ~/.ssh/prod_key
+          chmod 600 ~/.ssh/prod_key
+          ssh-keyscan -H $PROD_HOST >> ~/.ssh/known_hosts 2>/dev/null
+          
+          # Execute rollback
+          ssh -i ~/.ssh/prod_key $PROD_USER@$PROD_HOST "cd /opt/credibility-analyzer && /tmp/deploy-production.sh ${{ env.REGISTRY }} previous rollback"
+
+      - name: Notify Team on Success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "✅ Production deployment successful!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Deployment Successful* ✅\n\n*Commit:* `${{ github.sha }}`\n*Branch:* `${{ github.ref_name }}`\n*Actor:* ${{ github.actor }}\n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Team on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "❌ Production deployment failed!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Deployment Failed* ❌\n\n*Commit:* `${{ github.sha }}`\n*Branch:* `${{ github.ref_name }}`\n*Actor:* ${{ github.actor }}\n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>\n\n⚠️ Automatic rollback has been triggered."
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

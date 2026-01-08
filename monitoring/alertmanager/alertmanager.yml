@@ -1,0 +1,188 @@
+# Alertmanager Configuration for Credibility Analyzer
+# This configuration handles alert routing, grouping, and notification delivery
+# Requirements: 6.1, 6.2, 6.3, 6.4, 6.5
+
+global:
+  # Time to wait before declaring an alert as resolved if it has not been updated
+  resolve_timeout: 5m
+  
+  # Slack webhook URL for notifications (set via environment variable)
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+  
+  # SMTP configuration for email notifications (optional)
+  smtp_smarthost: '${SMTP_SMARTHOST}'
+  smtp_from: '${SMTP_FROM}'
+  smtp_auth_username: '${SMTP_AUTH_USERNAME}'
+  smtp_auth_password: '${SMTP_AUTH_PASSWORD}'
+
+# Inhibition rules to suppress certain alerts when others are firing
+inhibit_rules:
+  # If a critical alert is firing, suppress warning alerts for the same alertname
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']
+  
+  # If ServiceDown is firing, suppress other alerts from the same instance
+  - source_match:
+      alertname: 'ServiceDown'
+    target_match_re:
+      alertname: '.+'
+    equal: ['instance']
+
+# The root route - all alerts enter here
+route:
+  # Group alerts by these labels for deduplication
+  group_by: ['alertname', 'severity', 'job']
+  
+  # Wait time before sending the first notification for a new group
+  group_wait: 30s
+  
+  # Wait time before sending notifications about new alerts in an existing group
+  group_interval: 5m
+  
+  # Wait time before re-sending a notification for an alert that has already been sent
+  repeat_interval: 4h
+  
+  # Default receiver for all alerts
+  receiver: 'default'
+  
+  # Child routes for specific alert routing
+  routes:
+    # Critical alerts - immediate notification via Slack and PagerDuty
+    # Handles: ServiceDown (6.1), DatabaseConnectionFailure (6.3), MLServiceUnavailable (6.4)
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 1h
+      continue: true
+    
+    # Warning alerts - notification via Slack
+    # Handles: HighErrorRate (6.2), HighResponseTime, LowScrapingSuccessRate
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+    
+    # Info alerts - low priority notifications
+    # Handles: LowCacheHitRate
+    - match:
+        severity: info
+      receiver: 'info-alerts'
+      group_wait: 1m
+      group_interval: 10m
+      repeat_interval: 12h
+    
+    # Security alerts - immediate notification
+    # Handles: RateLimitAbuse (6.5)
+    - match_re:
+        alertname: 'RateLimitAbuse|SecurityViolation'
+      receiver: 'security-alerts'
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 30m
+
+# Notification receivers
+receivers:
+  # Default receiver - sends to general alerts channel
+  - name: 'default'
+    slack_configs:
+      - channel: '#alerts'
+        send_resolved: true
+        title: '{{ template "slack.default.title" . }}'
+        text: '{{ template "slack.default.text" . }}'
+        color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}{{ else }}good{{ end }}'
+        actions:
+          - type: button
+            text: 'View in Grafana'
+            url: '${GRAFANA_URL}/d/credibility-analyzer'
+          - type: button
+            text: 'Silence Alert'
+            url: '${ALERTMANAGER_URL}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22%7D'
+
+  # Critical alerts - Slack + PagerDuty for immediate response
+  - name: 'critical-alerts'
+    slack_configs:
+      - channel: '#alerts-critical'
+        send_resolved: true
+        title: ':rotating_light: CRITICAL: {{ .CommonLabels.alertname }}'
+        text: |
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Severity:* {{ .CommonLabels.severity }}
+          *Instance:* {{ .CommonLabels.instance }}
+          *Description:* {{ .CommonAnnotations.description }}
+          *Started:* {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+        color: 'danger'
+        actions:
+          - type: button
+            text: 'View in Grafana'
+            url: '${GRAFANA_URL}/d/credibility-analyzer'
+          - type: button
+            text: 'Acknowledge'
+            url: '${ALERTMANAGER_URL}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22%7D'
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SERVICE_KEY}'
+        severity: critical
+        description: '{{ .CommonLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+        details:
+          alertname: '{{ .CommonLabels.alertname }}'
+          instance: '{{ .CommonLabels.instance }}'
+          job: '{{ .CommonLabels.job }}'
+          description: '{{ .CommonAnnotations.description }}'
+    email_configs:
+      - to: '${ONCALL_EMAIL}'
+        send_resolved: true
+        headers:
+          Subject: '[CRITICAL] {{ .CommonLabels.alertname }} - Credibility Analyzer'
+
+  # Warning alerts - Slack notifications
+  - name: 'warning-alerts'
+    slack_configs:
+      - channel: '#alerts'
+        send_resolved: true
+        title: ':warning: WARNING: {{ .CommonLabels.alertname }}'
+        text: |
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Severity:* {{ .CommonLabels.severity }}
+          *Instance:* {{ .CommonLabels.instance }}
+          *Description:* {{ .CommonAnnotations.description }}
+          *Started:* {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+        color: 'warning'
+
+  # Info alerts - low priority Slack notifications
+  - name: 'info-alerts'
+    slack_configs:
+      - channel: '#alerts-info'
+        send_resolved: true
+        title: ':information_source: INFO: {{ .CommonLabels.alertname }}'
+        text: |
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Description:* {{ .CommonAnnotations.description }}
+        color: '#439FE0'
+
+  # Security alerts - dedicated security channel + PagerDuty
+  - name: 'security-alerts'
+    slack_configs:
+      - channel: '#security-alerts'
+        send_resolved: true
+        title: ':shield: SECURITY: {{ .CommonLabels.alertname }}'
+        text: |
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Severity:* {{ .CommonLabels.severity }}
+          *Description:* {{ .CommonAnnotations.description }}
+          *Client IP:* {{ .CommonLabels.client_ip }}
+          *Started:* {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+        color: 'danger'
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SECURITY_KEY}'
+        severity: warning
+        description: 'Security Alert: {{ .CommonLabels.alertname }}'
+
+# Custom notification templates
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'

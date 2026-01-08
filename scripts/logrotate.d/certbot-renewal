@@ -1,0 +1,27 @@
+# /etc/logrotate.d/certbot-renewal
+# Logrotate configuration for SSL certificate renewal logs
+#
+# Installation:
+#   sudo cp scripts/logrotate.d/certbot-renewal /etc/logrotate.d/
+#   sudo chmod 644 /etc/logrotate.d/certbot-renewal
+
+/var/log/certbot-renewal.log {
+    # Rotate logs weekly
+    weekly
+    
+    # Keep 4 weeks of logs
+    rotate 4
+    
+    # Compress old logs
+    compress
+    delaycompress
+    
+    # Don't error if log file is missing
+    missingok
+    
+    # Don't rotate if empty
+    notifempty
+    
+    # Create new log file with these permissions
+    create 0640 root adm
+}

@@ -1,0 +1,89 @@
+# Render Blueprint for Credibility Analyzer
+# Deploy all services with: render blueprint apply
+#
+# IMPORTANT: Render doesn't have native MongoDB support.
+# You need to set up MongoDB Atlas separately and add MONGODB_URI manually.
+# See docs/RENDER_DEPLOYMENT.md for instructions.
+
+services:
+  # Frontend - Static Site
+  - type: web
+    name: credibility-analyzer-frontend
+    runtime: static
+    buildCommand: cd credibility-analyzer && npm ci && npm run build
+    staticPublishPath: credibility-analyzer/dist
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false  # Set manually after API deploys
+      - key: VITE_APP_ENV
+        value: production
+      - key: VITE_APP_VERSION
+        value: "1.0.0"
+
+  # Backend API - Node.js
+  - type: web
+    name: credibility-analyzer-api
+    runtime: node
+    region: oregon
+    plan: starter
+    buildCommand: cd backend && npm ci && npm run build
+    startCommand: cd backend && node dist/server.js
+    healthCheckPath: /health
+    pullRequestPreviewsEnabled: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: ML_SERVICE_URL
+        sync: false  # Set manually: https://credibility-analyzer-ml.onrender.com
+      - key: CORS_ORIGINS
+        sync: false  # Set manually: https://credibility-analyzer-frontend.onrender.com
+      - key: MONGODB_URI
+        sync: false  # Set manually from MongoDB Atlas
+      - key: REDIS_URI
+        fromService:
+          name: credibility-analyzer-redis
+          type: redis
+          property: connectionString
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: RATE_LIMIT_MAX
+        value: "100"
+
+  # ML Service - Python
+  - type: web
+    name: credibility-analyzer-ml
+    runtime: python
+    region: oregon
+    plan: starter
+    buildCommand: cd ml-service && pip install -r requirements.txt
+    startCommand: cd ml-service && gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 app.main:app
+    healthCheckPath: /health
+    pullRequestPreviewsEnabled: true
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: USE_GPU
+        value: "false"
+
+  # Redis Cache
+  - type: redis
+    name: credibility-analyzer-redis
+    region: oregon
+    plan: starter
+    maxmemoryPolicy: allkeys-lru

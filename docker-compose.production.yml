@@ -1,0 +1,213 @@
+version: '3.8'
+
+# Production environment configuration
+# Supports horizontal scaling with multiple API instances
+# Uses production-grade settings for security and performance
+# Requirements: 5.3 - Rolling updates with zero downtime
+
+services:
+  # Node.js API Server - Production (scalable)
+  api:
+    image: ${REGISTRY:-docker.io}/backend:${IMAGE_TAG:-latest}
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - ML_SERVICE_URL=http://ml-service:5000
+      - CORS_ORIGINS=${PROD_CORS_ORIGINS:-https://fakechecker.com,https://www.fakechecker.com}
+      - RATE_LIMIT_WINDOW_MS=60000
+      - RATE_LIMIT_MAX=60
+      - MONGODB_URI=${PROD_MONGODB_URI:-mongodb://mongodb-prod:27017/credibility_prod}
+      - MONGODB_POOL_SIZE=10
+      - MONGODB_READ_PREFERENCE=primaryPreferred
+      - REDIS_URI=${PROD_REDIS_URI:-redis://redis-prod:6379}
+      - REDIS_TLS=${REDIS_TLS:-false}
+      - REDIS_CLUSTER_MODE=${REDIS_CLUSTER_MODE:-false}
+      - REDIS_CACHE_TTL=3600
+    expose:
+      - "3000"
+    depends_on:
+      ml-service:
+        condition: service_healthy
+      mongodb-prod:
+        condition: service_healthy
+      redis-prod:
+        condition: service_healthy
+    networks:
+      - prod-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      mode: replicated
+      replicas: ${API_REPLICAS:-3}
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      update_config:
+        parallelism: 1
+        delay: 30s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+
+  # Python ML Service - Production (CPU)
+  ml-service:
+    image: ${REGISTRY:-docker.io}/ml-service:${IMAGE_TAG:-latest}
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      - USE_GPU=false
+      - WORKERS=${ML_WORKERS:-4}
+    expose:
+      - "5000"
+    networks:
+      - prod-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      mode: replicated
+      replicas: ${ML_REPLICAS:-2}
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+      update_config:
+        parallelism: 1
+        delay: 30s
+        failure_action: rollback
+        order: start-first
+
+  # Frontend - Production (served via nginx)
+  frontend:
+    image: ${REGISTRY:-docker.io}/credibility-analyzer:${IMAGE_TAG:-latest}
+    expose:
+      - "80"
+    networks:
+      - prod-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # MongoDB - Production
+  mongodb-prod:
+    image: mongo:6
+    environment:
+      - MONGO_INITDB_DATABASE=credibility_prod
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongodb_prod_data:/data/db
+      - mongodb_prod_config:/data/configdb
+    expose:
+      - "27017"
+    networks:
+      - prod-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # Redis - Production
+  redis-prod:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_prod_data:/data
+    expose:
+      - "6379"
+    networks:
+      - prod-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Nginx Load Balancer - Production
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.production.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - prod-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+networks:
+  prod-network:
+    driver: bridge
+
+volumes:
+  mongodb_prod_data:
+  mongodb_prod_config:
+  redis_prod_data:

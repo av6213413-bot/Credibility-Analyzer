@@ -1,0 +1,538 @@
+version: '3.8'
+
+services:
+  # Node.js API Server
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: credibility-api
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - ML_SERVICE_URL=${ML_SERVICE_URL:-http://ml-service:5000}
+      - CORS_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173
+      - RATE_LIMIT_WINDOW_MS=60000
+      - RATE_LIMIT_MAX=100
+      - MONGODB_URI=${MONGODB_URI:-mongodb://mongodb:27017/credibility}
+      - MONGODB_POOL_SIZE=${MONGODB_POOL_SIZE:-10}
+      - MONGODB_READ_PREFERENCE=${MONGODB_READ_PREFERENCE:-primary}
+      - REDIS_URI=${REDIS_URI:-redis://redis:6379}
+      - REDIS_TLS=${REDIS_TLS:-false}
+      - REDIS_CLUSTER_MODE=${REDIS_CLUSTER_MODE:-false}
+      - REDIS_CACHE_TTL=${REDIS_CACHE_TTL:-3600}
+    ports:
+      - "3000:3000"
+    depends_on:
+      ml-service:
+        condition: service_healthy
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - self-hosted
+      - production
+      - monitoring
+
+  # Python ML Service (CPU - for self-hosted development)
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: credibility-ml-service
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      - USE_GPU=false
+    expose:
+      - "5000"
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    profiles:
+      - self-hosted
+      - queue
+      - self-hosted-queue
+      - monitoring
+
+
+  # Python ML Service (GPU - for dedicated GPU deployment)
+  ml-service-gpu:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile.gpu
+    container_name: credibility-ml-service-gpu
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      - USE_GPU=true
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+    expose:
+      - "5000"
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    runtime: nvidia
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - gpu
+
+  # API Server for GPU profile (connects to GPU ML service)
+  api-gpu:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: credibility-api-gpu
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - ML_SERVICE_URL=${ML_SERVICE_URL:-http://ml-service-gpu:5000}
+      - CORS_ORIGINS=http://localhost,http://localhost:80
+      - RATE_LIMIT_WINDOW_MS=60000
+      - RATE_LIMIT_MAX=100
+      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_POOL_SIZE=${MONGODB_POOL_SIZE:-10}
+      - MONGODB_READ_PREFERENCE=${MONGODB_READ_PREFERENCE:-primary}
+      - REDIS_URI=${REDIS_URI}
+      - REDIS_TLS=${REDIS_TLS:-false}
+      - REDIS_CLUSTER_MODE=${REDIS_CLUSTER_MODE:-false}
+      - REDIS_CACHE_TTL=${REDIS_CACHE_TTL:-3600}
+    ports:
+      - "3000:3000"
+    depends_on:
+      ml-service-gpu:
+        condition: service_healthy
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - gpu
+
+
+  # API Server for production profile (connects to external ML service)
+  api-production:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: credibility-api-production
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - ML_SERVICE_URL=${ML_SERVICE_URL}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:80}
+      - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-60000}
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-100}
+      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_POOL_SIZE=${MONGODB_POOL_SIZE:-10}
+      - MONGODB_READ_PREFERENCE=${MONGODB_READ_PREFERENCE:-primaryPreferred}
+      - REDIS_URI=${REDIS_URI}
+      - REDIS_TLS=${REDIS_TLS:-true}
+      - REDIS_CLUSTER_MODE=${REDIS_CLUSTER_MODE:-false}
+      - REDIS_CACHE_TTL=${REDIS_CACHE_TTL:-3600}
+    ports:
+      - "3000:3000"
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - production
+
+  # API Server with queue support (self-hosted with async processing)
+  api-queue:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: credibility-api-queue
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - ML_SERVICE_URL=${ML_SERVICE_URL:-http://ml-service:5000}
+      - CORS_ORIGINS=http://localhost,http://localhost:80
+      - RATE_LIMIT_WINDOW_MS=60000
+      - RATE_LIMIT_MAX=100
+      - MONGODB_URI=${MONGODB_URI:-mongodb://mongodb:27017/credibility}
+      - MONGODB_POOL_SIZE=${MONGODB_POOL_SIZE:-10}
+      - MONGODB_READ_PREFERENCE=${MONGODB_READ_PREFERENCE:-primary}
+      - REDIS_URI=${REDIS_URI:-redis://redis:6379}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_TLS=${REDIS_TLS:-false}
+      - REDIS_CLUSTER_MODE=${REDIS_CLUSTER_MODE:-false}
+      - REDIS_CACHE_TTL=${REDIS_CACHE_TTL:-3600}
+      - QUEUE_ENABLED=true
+      - QUEUE_TYPE=${QUEUE_TYPE:-bull}
+      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://credibility:credibility_pass@rabbitmq:5672/credibility}
+    ports:
+      - "3000:3000"
+    depends_on:
+      ml-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - queue
+      - self-hosted-queue
+
+  # MongoDB (for self-hosted development)
+  mongodb:
+    image: mongo:6
+    container_name: credibility-mongodb
+    environment:
+      - MONGO_INITDB_DATABASE=credibility
+    volumes:
+      - mongodb_data:/data/db
+    expose:
+      - "27017"
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - self-hosted
+      - queue
+      - self-hosted-queue
+      - monitoring
+
+  # Redis (for self-hosted development)
+  redis:
+    image: redis:7-alpine
+    container_name: credibility-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    profiles:
+      - self-hosted
+      - queue
+      - self-hosted-queue
+      - monitoring
+
+  # RabbitMQ (for async job processing)
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: credibility-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-credibility}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-credibility_pass}
+      - RABBITMQ_DEFAULT_VHOST=${RABBITMQ_VHOST:-credibility}
+    ports:
+      - "5672:5672"   # AMQP protocol
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    profiles:
+      - queue
+      - self-hosted-queue
+
+
+  # Nginx Reverse Proxy (for self-hosted and production)
+  nginx:
+    image: nginx:alpine
+    container_name: credibility-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - self-hosted
+      - production
+
+  # Nginx for queue profile
+  nginx-queue:
+    image: nginx:alpine
+    container_name: credibility-nginx-queue
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api-queue:
+        condition: service_healthy
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - queue
+      - self-hosted-queue
+
+  # Nginx for GPU profile
+  nginx-gpu:
+    image: nginx:alpine
+    container_name: credibility-nginx-gpu
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api-gpu:
+        condition: service_healthy
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - gpu
+
+  # ============================================
+  # Monitoring Stack Services
+  # ============================================
+
+  # Prometheus - Metrics collection and alerting
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: credibility-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - monitoring
+
+  # Grafana - Metrics visualization and dashboards
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: credibility-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3001}
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    profiles:
+      - monitoring
+
+  # Alertmanager - Alert routing and notifications
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: credibility-alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=${ALERTMANAGER_URL:-http://localhost:9093}'
+    environment:
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - PAGERDUTY_SERVICE_KEY=${PAGERDUTY_SERVICE_KEY:-}
+      - PAGERDUTY_SECURITY_KEY=${PAGERDUTY_SECURITY_KEY:-}
+      - GRAFANA_URL=${GRAFANA_URL:-http://localhost:3001}
+      - ALERTMANAGER_URL=${ALERTMANAGER_URL:-http://localhost:9093}
+      - SMTP_SMARTHOST=${SMTP_SMARTHOST:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_AUTH_USERNAME=${SMTP_AUTH_USERNAME:-}
+      - SMTP_AUTH_PASSWORD=${SMTP_AUTH_PASSWORD:-}
+      - ONCALL_EMAIL=${ONCALL_EMAIL:-}
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./monitoring/alertmanager/templates:/etc/alertmanager/templates:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "9093:9093"
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - monitoring
+
+  # MongoDB Exporter - Exports MongoDB metrics for Prometheus
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.39.0
+    container_name: credibility-mongodb-exporter
+    command:
+      - '--mongodb.uri=mongodb://mongodb:27017'
+      - '--collect-all'
+      - '--compatible-mode'
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+    expose:
+      - "9216"
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9216/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - monitoring
+
+  # Redis Exporter - Exports Redis metrics for Prometheus
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.55.0
+    container_name: credibility-redis-exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    expose:
+      - "9121"
+    networks:
+      - credibility-network
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - monitoring
+
+networks:
+  credibility-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  redis_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:

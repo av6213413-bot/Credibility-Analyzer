@@ -1,0 +1,96 @@
+import type { Theme } from '@/styles/theme';
+
+export const createHomePageStyles = (theme: Theme) => ({
+  container: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+    maxWidth: '1200px',
+    margin: '0 auto',
+    width: '100%',
+    boxSizing: 'border-box' as const,
+  },
+  hero: {
+    textAlign: 'center' as const,
+    marginBottom: theme.spacing.xl,
+    padding: `${theme.spacing.xl} ${theme.spacing.md}`,
+    width: '100%',
+  },
+  title: {
+    fontSize: 'clamp(1.75rem, 5vw, 2.5rem)',
+    fontWeight: 700,
+    color: theme.colors.textPrimary,
+    marginBottom: theme.spacing.md,
+  },
+  subtitle: {
+    fontSize: 'clamp(1rem, 2.5vw, 1.25rem)',
+    color: theme.colors.textSecondary,
+    maxWidth: '600px',
+    lineHeight: 1.6,
+    margin: `0 auto ${theme.spacing.lg}`,
+  },
+  ctaButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    padding: `${theme.spacing.md} ${theme.spacing.xl}`,
+    backgroundColor: theme.colors.primary,
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: theme.borderRadius.md,
+    fontSize: '1.125rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    textDecoration: 'none',
+    transition: 'background-color 0.2s ease',
+  },
+  ctaButtonHover: {
+    backgroundColor: theme.colors.primaryHover,
+  },
+  featuresSection: {
+    width: '100%',
+    marginTop: theme.spacing.xl,
+  },
+  featuresTitle: {
+    fontSize: 'clamp(1.25rem, 3vw, 1.75rem)',
+    fontWeight: 600,
+    color: theme.colors.textPrimary,
+    textAlign: 'center' as const,
+    marginBottom: theme.spacing.lg,
+  },
+  featuresGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+    gap: theme.spacing.lg,
+    padding: theme.spacing.md,
+    width: '100%',
+  },
+  featureCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.lg,
+    boxShadow: theme.shadows.sm,
+    border: `1px solid ${theme.colors.border}`,
+    transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+  },
+  featureCardHover: {
+    boxShadow: theme.shadows.md,
+    transform: 'translateY(-2px)',
+  },
+  featureIcon: {
+    fontSize: '2rem',
+    marginBottom: theme.spacing.md,
+  },
+  featureTitle: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    color: theme.colors.textPrimary,
+    marginBottom: theme.spacing.sm,
+  },
+  featureDescription: {
+    fontSize: '1rem',
+    color: theme.colors.textSecondary,
+    lineHeight: 1.5,
+  },
+});
