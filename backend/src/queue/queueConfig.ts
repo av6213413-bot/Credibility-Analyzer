@@ -1,5 +1,18 @@
+/**
+ * Queue Configuration
+ * 
+ * Defines configuration interfaces and defaults for async job processing.
+ * Supports Bull (Redis) and RabbitMQ queue backends.
+ * 
+ * Requirements: 10.2, 10.3, 10.5
+ */
+
+// Re-export backoff utility for convenience
 export { calculateExponentialBackoff } from './backoffUtils';
 
+/**
+ * Redis connection configuration for Bull queue
+ */
 export interface RedisConfig {
   host: string;
   port: number;
@@ -7,16 +20,25 @@ export interface RedisConfig {
   db?: number;
 }
 
+/**
+ * RabbitMQ connection configuration
+ */
 export interface RabbitMQConfig {
   url: string;
   queue?: string;
 }
 
+/**
+ * Backoff configuration for job retries
+ */
 export interface BackoffConfig {
   type: 'exponential' | 'fixed';
   delay: number;
 }
 
+/**
+ * Default job options for queue processing
+ */
 export interface DefaultJobOptions {
   attempts: number;
   backoff: BackoffConfig;
@@ -25,6 +47,10 @@ export interface DefaultJobOptions {
   timeout?: number;
 }
 
+/**
+ * Main queue configuration interface
+ * Supports both Bull (Redis) and RabbitMQ backends
+ */
 export interface QueueConfig {
   type: 'bull' | 'rabbitmq';
   redis?: RedisConfig;
@@ -32,6 +58,9 @@ export interface QueueConfig {
   defaultJobOptions: DefaultJobOptions;
 }
 
+/**
+ * Default queue configuration using Bull with Redis
+ */
 export const defaultQueueConfig: QueueConfig = {
   type: 'bull',
   redis: {
@@ -52,10 +81,17 @@ export const defaultQueueConfig: QueueConfig = {
   },
 };
 
+/**
+ * Create a queue configuration with custom options
+ * 
+ * @param overrides - Partial configuration to override defaults
+ * @returns Complete queue configuration
+ */
 export function createQueueConfig(overrides?: Partial<QueueConfig>): QueueConfig {
   if (!overrides) {
     return { ...defaultQueueConfig };
   }
+
   return {
     ...defaultQueueConfig,
     ...overrides,

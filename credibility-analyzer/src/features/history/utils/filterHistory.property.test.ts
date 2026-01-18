@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Property Tests for History Filter Functions
  * Feature: credibility-analyzer-frontend
  * Property 9: Date Range Filter Correctness - Validates: Requirements 4.3
@@ -40,6 +40,12 @@ const normalizeDate = (date: Date): Date => {
 };
 
 describe('Property 9: Date Range Filter Correctness', () => {
+  /**
+   * For any date range filter [start, end] applied to history,
+   * all returned items SHALL have timestamps within that range (inclusive).
+   * Validates: Requirements 4.3
+   */
+
   it('should return only items within the date range (inclusive)', () => {
     fc.assert(
       fc.property(historyItemsArb, dateRangeArb, (items, dateRange) => {
