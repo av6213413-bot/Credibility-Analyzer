@@ -7,7 +7,7 @@ WORKDIR /app/frontend
 COPY credibility-analyzer/package*.json ./
 RUN npm ci
 COPY credibility-analyzer/ ./
-ARG VITE_API_URL=/api
+ARG VITE_API_URL=
 ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 

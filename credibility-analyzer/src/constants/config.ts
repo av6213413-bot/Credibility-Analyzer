@@ -1,6 +1,10 @@
 // Helper to ensure API URL has proper protocol
 const getApiUrl = (): string => {
-  const url = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  const url = import.meta.env.VITE_API_URL;
+  // If not set or empty, use same-origin (combined deployment)
+  if (url === undefined || url === '') {
+    return '';
+  }
   // Relative paths (e.g., /api) are used for same-origin combined deployments
   if (url.startsWith('/')) {
     return url;
