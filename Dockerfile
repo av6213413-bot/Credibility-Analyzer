@@ -99,8 +99,8 @@ export CORS_ORIGINS="${CORS_ORIGINS:-*}"
 
 # Start ML service in background
 cd /app/ml-service
-FLASK_ENV=production PYTHONUNBUFFERED=1 USE_GPU=false \
-  gunicorn --bind 127.0.0.1:5000 --workers 2 --timeout 120 app.main:app &
+FLASK_ENV=production PYTHONUNBUFFERED=1 USE_GPU=false DISABLE_ML_MODEL="${DISABLE_ML_MODEL:-true}" \
+  gunicorn --bind 127.0.0.1:5000 --workers 1 --timeout 120 app.main:app &
 ML_PID=$!
 
 # Wait for ML service to be ready

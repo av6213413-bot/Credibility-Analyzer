@@ -108,10 +108,18 @@ def _get_sentiment_pipeline():
     Uses distilbert-base-uncased-finetuned-sst-2-english for fast,
     lightweight sentiment classification. Falls back gracefully if
     the model cannot be loaded (e.g., no internet on first run).
+
+    Set DISABLE_ML_MODEL=true to skip model loading (useful for
+    memory-constrained environments like free-tier cloud hosting).
     """
     global _SENTIMENT_PIPELINE
     if _SENTIMENT_PIPELINE is not None:
         return _SENTIMENT_PIPELINE
+
+    # Allow disabling the ML model for low-memory environments
+    if os.environ.get("DISABLE_ML_MODEL", "false").lower() in ("true", "1", "yes"):
+        logger.info("ML model disabled via DISABLE_ML_MODEL env var, using heuristics only")
+        return None
 
     try:
         from transformers import pipeline
