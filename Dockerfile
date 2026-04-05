@@ -102,7 +102,7 @@ stderr_logfile_maxbytes=0
 environment=FLASK_ENV="production",PYTHONUNBUFFERED="1",USE_GPU="false"
 
 [program:backend]
-command=node dist/server.js
+command=/app/run-backend.sh
 directory=/app/backend
 autostart=true
 autorestart=true
@@ -110,7 +110,6 @@ stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
-environment=NODE_ENV="production",PORT="3001",ML_SERVICE_URL="http://127.0.0.1:5000",CORS_ORIGINS="*"
 
 [program:nginx]
 command=nginx -g "daemon off;"
@@ -122,20 +121,23 @@ stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 SUPERVISOR
 
+# ---- Backend runner script (inherits env vars from parent process) ----
+RUN cat > /app/run-backend.sh <<'BACKEND'
+#!/bin/bash
+export NODE_ENV="${NODE_ENV:-production}"
+export PORT="3001"
+export ML_SERVICE_URL="http://127.0.0.1:5000"
+export CORS_ORIGINS="${CORS_ORIGINS:-*}"
+# MONGODB_URI and REDIS_URI are inherited from the parent environment
+exec node dist/server.js
+BACKEND
+RUN chmod +x /app/run-backend.sh
+
 # ---- Startup script ----
 RUN cat > /app/start.sh <<'START'
 #!/bin/bash
 PORT=${PORT:-8080}
 sed -i "s/PORT_PLACEHOLDER/$PORT/g" /etc/nginx/sites-available/default
-
-# Pass environment variables to backend via supervisor
-if [ -n "$MONGODB_URI" ]; then
-  sed -i "/\[program:backend\]/,/^\[/{s|environment=|environment=MONGODB_URI=\"$MONGODB_URI\",|}" /etc/supervisor/conf.d/app.conf
-fi
-
-if [ -n "$REDIS_URI" ]; then
-  sed -i "/\[program:backend\]/,/^\[/{s|environment=|environment=REDIS_URI=\"$REDIS_URI\",|}" /etc/supervisor/conf.d/app.conf
-fi
 
 exec supervisord -c /etc/supervisor/supervisord.conf
 START
