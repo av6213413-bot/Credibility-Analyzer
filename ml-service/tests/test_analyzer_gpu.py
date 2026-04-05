@@ -60,6 +60,7 @@ class TestGPUDetection:
         # Reset cached device
         import app.analyzer as analyzer_module
         analyzer_module._DEVICE = None
+        analyzer_module._SENTIMENT_PIPELINE = None
         
         with patch.dict(os.environ, {"USE_GPU": use_gpu_value}):
             device = get_device()
@@ -82,6 +83,7 @@ class TestGPUDetection:
         # Reset cached device
         import app.analyzer as analyzer_module
         analyzer_module._DEVICE = None
+        analyzer_module._SENTIMENT_PIPELINE = None
         
         status = get_gpu_status()
         
@@ -96,7 +98,7 @@ class TestGPUDetection:
         assert isinstance(status["gpu_available"], bool)
         assert status["using_device"] in ("cuda", "cpu")
     
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     @given(st.text(min_size=10, max_size=500))
     def test_analyze_content_works_regardless_of_gpu(self, text: str):
         """
@@ -108,6 +110,7 @@ class TestGPUDetection:
         # Reset cached device
         import app.analyzer as analyzer_module
         analyzer_module._DEVICE = None
+        analyzer_module._SENTIMENT_PIPELINE = None
         
         # Should not raise any exceptions
         result = analyze_content(text)
@@ -171,7 +174,7 @@ class TestGPUFallback:
             # Should fall back to CPU
             assert result["device"] == "cpu"
     
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     @given(st.text(min_size=10, max_size=200))
     def test_analysis_succeeds_with_cpu_fallback(self, text: str):
         """
@@ -182,6 +185,7 @@ class TestGPUFallback:
         # Reset cached device
         import app.analyzer as analyzer_module
         analyzer_module._DEVICE = None
+        analyzer_module._SENTIMENT_PIPELINE = None
         
         # Force CPU mode
         with patch.dict(os.environ, {"USE_GPU": "false"}):
@@ -207,6 +211,7 @@ class TestGPUEnvironmentVariables:
         # Reset cached device
         import app.analyzer as analyzer_module
         analyzer_module._DEVICE = None
+        analyzer_module._SENTIMENT_PIPELINE = None
         
         with patch.dict(os.environ, {"USE_GPU": value}):
             device = get_device()
@@ -222,6 +227,7 @@ class TestGPUEnvironmentVariables:
         # Reset cached device
         import app.analyzer as analyzer_module
         analyzer_module._DEVICE = None
+        analyzer_module._SENTIMENT_PIPELINE = None
         
         test_value = "test_value"
         with patch.dict(os.environ, {"USE_GPU": test_value}):

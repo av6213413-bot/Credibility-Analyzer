@@ -271,32 +271,69 @@ class TestPositiveIndicators:
 
 class TestCalculateScore:
     """Tests for score calculation function."""
-    
+
     def test_neutral_score_with_no_signals(self):
         """Should return neutral score when no signals present."""
         score = _calculate_score([], [], [])
         assert score == 50  # Base neutral score
-    
+
     def test_score_decreases_with_red_flags(self):
         """Score should decrease with red flags."""
         red_flags = [{"severity": "medium"}]
         score = _calculate_score(red_flags, [], [])
         assert score < 50
-    
+
     def test_score_increases_with_positive_indicators(self):
         """Score should increase with positive indicators."""
         positive_indicators = [{"description": "test", "icon": "test"}]
         score = _calculate_score([], positive_indicators, [])
         assert score > 50
-    
+
     def test_score_clamped_to_valid_range(self):
         """Score should always be between 0 and 100."""
         # Many red flags
         many_red_flags = [{"severity": "high"} for _ in range(20)]
         score_low = _calculate_score(many_red_flags, [], [])
         assert score_low >= 0
-        
+
         # Many positive indicators
         many_positive = [{"description": "test", "icon": "test"} for _ in range(20)]
         score_high = _calculate_score([], many_positive, [])
         assert score_high <= 100
+
+    def test_ml_adjustment_positive(self):
+        """Score should increase with positive ML adjustment."""
+        score = _calculate_score([], [], [], ml_adjustment=10)
+        assert score == 60
+
+    def test_ml_adjustment_negative(self):
+        """Score should decrease with negative ML adjustment."""
+        score = _calculate_score([], [], [], ml_adjustment=-10)
+        assert score == 40
+
+    def test_ml_adjustment_clamped(self):
+        """Score with ML adjustment should still be clamped to 0-100."""
+        score = _calculate_score([], [], [], ml_adjustment=200)
+        assert score == 100
+        score = _calculate_score([], [], [], ml_adjustment=-200)
+        assert score == 0
+
+
+class TestMLSignals:
+    """Tests for ML model integration in analyze_content."""
+
+    def test_ml_signals_field_present_or_absent(self):
+        """ml_signals should be a dict if model loaded, absent otherwise."""
+        result = analyze_content("This is a well-researched scientific article.")
+        if "ml_signals" in result:
+            signals = result["ml_signals"]
+            assert signals["sentiment"] in ("POSITIVE", "NEGATIVE")
+            assert 0 <= signals["confidence"] <= 1
+            assert "model" in signals
+
+    def test_score_valid_with_ml(self):
+        """Score should remain in 0-100 range with ML enabled."""
+        result = analyze_content(
+            "Peer-reviewed research from a university confirms the data."
+        )
+        assert 0 <= result["score"] <= 100
